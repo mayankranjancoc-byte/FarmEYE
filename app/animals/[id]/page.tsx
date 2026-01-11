@@ -189,7 +189,7 @@ export default function AnimalDetailPage() {
                                 )}
 
                                 {/* XHI: Health Explanation Panel */}
-                                {riskAssessment.explanation && (
+                                {('explanation' in riskAssessment) && riskAssessment.explanation && (
                                     <HealthExplanationPanel
                                         explanation={riskAssessment.explanation}
                                         animalId={animal.id}
