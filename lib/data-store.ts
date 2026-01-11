@@ -53,6 +53,10 @@ function generateId(): string {
 
 /**
  * Initialize seed data for demo purposes
+ * Based on real dairy cow statistics from research:
+ * - Activity: 900-1200 units/day (healthy Holstein)
+ * - Speed: 2.8-4.2 km/h walking speed
+ * - Visit frequency: 4-8 times/day to feeding areas
  */
 export function initializeSeedData() {
     // Clear existing data
@@ -63,45 +67,169 @@ export function initializeSeedData() {
     geminiAlerts.length = 0;
     healthBaselines.clear();
     animalBaselines.clear();
+    dailyDeviations.clear();
+    earlyWarnings.clear();
 
-    // Create sample animals
-    const sampleSpecies: AnimalSpecies[] = ['Cow', 'Cow', 'Buffalo', 'Goat'];
     const now = new Date();
 
-    sampleSpecies.forEach((species, index) => {
-        const animalId = generateAnimalId(species);
-        const registeredAt = new Date(now.getTime() - (30 - index * 7) * 24 * 60 * 60 * 1000).toISOString();
+    // Demo Animal 1: HEALTHY COW with STABLE baseline (for comparison)
+    const cow1Id = 'COW-101';
+    const cow1: AnimalProfile = {
+        id: cow1Id,
+        species: 'Cow',
+        registeredAt: new Date(now.getTime() - 20 * 24 * 60 * 60 * 1000).toISOString(), // 20 days ago
+        metadata: {
+            breed: 'Holstein',
+            age: 4,
+            weight: 580,
+        },
+    };
+    animals.set(cow1Id, cow1);
 
-        const animal: AnimalProfile = {
-            id: animalId,
-            species,
-            registeredAt,
-            metadata: {
-                breed: species === 'Cow' ? 'Holstein' : species === 'Buffalo' ? 'Murrah' : 'Jamunapari',
-                age: 2 + index,
-                weight: species === 'Cow' ? 450 + index * 20 : species === 'Buffalo' ? 550 + index * 15 : 40 + index * 5,
-            },
-        };
+    // Stable baseline (based on research: healthy Holstein cows)
+    const cow1Baseline: AnimalBaseline = {
+        animalId: cow1Id,
+        avgSpeed: 3.8, // km/h (normal walking)
+        avgVisitsPerDay: 7, // feeding visits
+        avgActivityLevel: 1050, // activity units
+        speedStdDev: 0.42,
+        activityStdDev: 87,
+        baselineStartDate: new Date(now.getTime() - 20 * 24 * 60 * 60 * 1000).toISOString(),
+        baselineStatus: 'STABLE',
+        dataPointsCollected: 28,
+        requiredDataPoints: 20,
+    };
+    animalBaselines.set(cow1Id, cow1Baseline);
 
-        animals.set(animalId, animal);
+    // Add 7 days of normal deviation history (small fluctuations)
+    const cow1Deviations: DailyDeviation[] = [];
+    for (let i = 6; i >= 0; i--) {
+        const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+        cow1Deviations.push({
+            date: date.toISOString().split('T')[0],
+            activityDeltaPct: -2 + Math.random() * 4, // -2% to +2%
+            speedDeltaPct: -1.5 + Math.random() * 3, // -1.5% to +1.5%
+            visitDeltaPct: -3 + Math.random() * 6, // -3% to +3%
+            flagCount: 0, // All within normal range
+        });
+    }
+    dailyDeviations.set(cow1Id, cow1Deviations);
 
-        // Create baseline metrics
-        const baseline: HealthBaseline = {
-            animalId,
-            avgActivityLevel: 1000 + index * 100,
-            avgVisitFrequency: 6 + index,
-            avgSpeed: 3.5 + index * 0.3,
-            speedStdDev: 0.5,
-            calculatedAt: now.toISOString(),
-        };
-        healthBaselines.set(animalId, baseline);
+    // Demo Animal 2: COW WITH EARLY LAMENESS (shows EHDD + XHI features)
+    const cow2Id = 'COW-102';
+    const cow2: AnimalProfile = {
+        id: cow2Id,
+        species: 'Cow',
+        registeredAt: new Date(now.getTime() - 18 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: {
+            breed: 'Holstein',
+            age: 3,
+            weight: 530,
+        },
+    };
+    animals.set(cow2Id, cow2);
 
-        // Create personalized baseline for new learning system
-        const personalBaseline = initializeBaseline(animalId);
-        animalBaselines.set(animalId, personalBaseline);
-    });
+    // Baseline (was healthy)
+    const cow2Baseline: AnimalBaseline = {
+        animalId: cow2Id,
+        avgSpeed: 3.6,
+        avgVisitsPerDay: 6.5,
+        avgActivityLevel: 980,
+        speedStdDev: 0.38,
+        activityStdDev: 82,
+        baselineStartDate: new Date(now.getTime() - 18 * 24 * 60 * 60 * 1000).toISOString(),
+        baselineStatus: 'STABLE',
+        dataPointsCollected: 25,
+        requiredDataPoints: 20,
+    };
+    animalBaselines.set(cow2Id, cow2Baseline);
 
-    console.log(`[DataStore] Initialized with ${animals.size} sample animals`);
+    // 7-day deviation showing early lameness pattern (classic early drift)
+    const cow2Deviations: DailyDeviation[] = [
+        { date: new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], activityDeltaPct: -2.1, speedDeltaPct: -1.8, visitDeltaPct: -3.5, flagCount: 0 },
+        { date: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], activityDeltaPct: -6.2, speedDeltaPct: -5.4, visitDeltaPct: -8.1, flagCount: 2 }, // Drift starts
+        { date: new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], activityDeltaPct: -7.8, speedDeltaPct: -6.9, visitDeltaPct: -9.7, flagCount: 2 },
+        { date: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], activityDeltaPct: -8.4, speedDeltaPct: -7.2, visitDeltaPct: -11.2, flagCount: 3 },
+        { date: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], activityDeltaPct: -9.1, speedDeltaPct: -8.6, visitDeltaPct: -12.8, flagCount: 3 }, // 3 consecutive days
+        { date: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], activityDeltaPct: -10.3, speedDeltaPct: -9.8, visitDeltaPct: -14.1, flagCount: 3 },
+        { date: now.toISOString().split('T')[0], activityDeltaPct: -11.7, speedDeltaPct: -10.4, visitDeltaPct: -15.3, flagCount: 3 }, // Today
+    ];
+    dailyDeviations.set(cow2Id, cow2Deviations);
+
+    // Demo Animal 3: COW WITH MASTITIS PATTERN (shows HIGH risk XHI)
+    const cow3Id = 'COW-103';
+    const cow3: AnimalProfile = {
+        id: cow3Id,
+        species: 'Cow',
+        registeredAt: new Date(now.getTime() - 22 * 24 * 60 * 60 * 1000).toISOString(),
+        metadata: {
+            breed: 'Jersey',
+            age: 5,
+            weight: 420,
+        },
+    };
+    animals.set(cow3Id, cow3);
+
+    // Baseline
+    const cow3Baseline: AnimalBaseline = {
+        animalId: cow3Id,
+        avgSpeed: 3.2,
+        avgVisitsPerDay: 8,
+        avgActivityLevel: 920,
+        speedStdDev: 0.35,
+        activityStdDev: 75,
+        baselineStartDate: new Date(now.getTime() - 22 * 24 * 60 * 60 * 1000).toISOString(),
+        baselineStatus: 'STABLE',
+        dataPointsCollected: 30,
+        requiredDataPoints: 20,
+    };
+    animalBaselines.set(cow3Id, cow3Baseline);
+
+    // Severe deviation pattern (mastitis-like)
+    const cow3Deviations: DailyDeviation[] = [
+        { date: new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], activityDeltaPct: -18.2, speedDeltaPct: -5.2, visitDeltaPct: -22.4, flagCount: 2 },
+        { date: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], activityDeltaPct: -24.6, speedDeltaPct: -7.8, visitDeltaPct: -28.9, flagCount: 2 },
+        { date: new Date(now.getTime() - 4 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], activityDeltaPct: -28.3, speedDeltaPct: -9.4, visitDeltaPct: -32.7, flagCount: 2 },
+        { date: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], activityDeltaPct: -31.5, speedDeltaPct: -11.2, visitDeltaPct: -38.5, flagCount: 2 },
+        { date: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], activityDeltaPct: -33.8, speedDeltaPct: -12.6, visitDeltaPct: -42.3, flagCount: 2 },
+        { date: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], activityDeltaPct: -35.2, speedDeltaPct: -14.1, visitDeltaPct: -45.6, flagCount: 2 },
+        { date: now.toISOString().split('T')[0], activityDeltaPct: -36.8, speedDeltaPct: -15.3, visitDeltaPct: -48.2, flagCount: 2 },
+    ];
+    dailyDeviations.set(cow3Id, cow3Deviations);
+
+    // Demo Animal 4: BUFFALO still in LEARNING (for comparison)
+    const buf1Id = 'BUFFALO-201';
+    const buf1: AnimalProfile = {
+        id: buf1Id,
+        species: 'Buffalo',
+        registeredAt: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString(), // 3 days ago
+        metadata: {
+            breed: 'Murrah',
+            age: 4,
+            weight: 650,
+        },
+    };
+    animals.set(buf1Id, buf1);
+
+    // Still learning
+    const buf1Baseline: AnimalBaseline = {
+        animalId: buf1Id,
+        avgSpeed: 2.8,
+        avgVisitsPerDay: 5.2,
+        avgActivityLevel: 780,
+        speedStdDev: 0.3,
+        activityStdDev: 65,
+        baselineStartDate: new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString(),
+        baselineStatus: 'LEARNING',
+        dataPointsCollected: 5,
+        requiredDataPoints: 20,
+    };
+    animalBaselines.set(buf1Id, buf1Baseline);
+
+    console.log(`[DataStore] Initialized with ${animals.size} sample animals (${Array.from(animals.values()).filter(a => {
+        const baseline = animalBaselines.get(a.id);
+        return baseline?.baselineStatus === 'STABLE';
+    }).length} with STABLE baselines)`);
 }
 
 // Animal CRUD operations
