@@ -6,7 +6,11 @@ import {
     GeminiAlert,
     HealthBaseline,
     AnimalSpecies,
+    AnimalBaseline,
+    DailyDeviation,
+    EarlyWarningAssessment,
 } from '@/types';
+import { initializeBaseline } from './baseline-learning';
 
 /**
  * In-memory data store for FarmEYE
@@ -20,6 +24,9 @@ const healthMetrics = new Map<string, HealthMetrics[]>();
 const riskAssessments = new Map<string, RiskAssessment>();
 const geminiAlerts: GeminiAlert[] = [];
 const healthBaselines = new Map<string, HealthBaseline>();
+const animalBaselines = new Map<string, AnimalBaseline>();
+const dailyDeviations = new Map<string, DailyDeviation[]>();
+const earlyWarnings = new Map<string, EarlyWarningAssessment>();
 
 /**
  * Generate deterministic animal ID based on sequence
@@ -55,6 +62,7 @@ export function initializeSeedData() {
     riskAssessments.clear();
     geminiAlerts.length = 0;
     healthBaselines.clear();
+    animalBaselines.clear();
 
     // Create sample animals
     const sampleSpecies: AnimalSpecies[] = ['Cow', 'Cow', 'Buffalo', 'Goat'];
@@ -87,6 +95,10 @@ export function initializeSeedData() {
             calculatedAt: now.toISOString(),
         };
         healthBaselines.set(animalId, baseline);
+
+        // Create personalized baseline for new learning system
+        const personalBaseline = initializeBaseline(animalId);
+        animalBaselines.set(animalId, personalBaseline);
     });
 
     console.log(`[DataStore] Initialized with ${animals.size} sample animals`);
@@ -113,6 +125,10 @@ export function createAnimal(species: AnimalSpecies, metadata?: AnimalProfile['m
         calculatedAt: new Date().toISOString(),
     };
     healthBaselines.set(animal.id, baseline);
+
+    // Create personalized baseline
+    const personalBaseline = initializeBaseline(animal.id);
+    animalBaselines.set(animal.id, personalBaseline);
 
     return animal;
 }
@@ -215,6 +231,19 @@ export function updateHealthBaseline(baseline: HealthBaseline): void {
     healthBaselines.set(baseline.animalId, baseline);
 }
 
+// Personalized baseline operations
+export function getAnimalBaseline(animalId: string): AnimalBaseline | undefined {
+    return animalBaselines.get(animalId);
+}
+
+export function setAnimalBaseline(baseline: AnimalBaseline): void {
+    animalBaselines.set(baseline.animalId, baseline);
+}
+
+export function getAllAnimalBaselines(): AnimalBaseline[] {
+    return Array.from(animalBaselines.values());
+}
+
 // Utility: Get animal or create if doesn't exist
 export function getOrCreateAnimal(animalId?: string, species: AnimalSpecies = 'Cow'): AnimalProfile {
     if (animalId) {
@@ -223,6 +252,50 @@ export function getOrCreateAnimal(animalId?: string, species: AnimalSpecies = 'C
     }
 
     return createAnimal(species);
+}
+
+// Daily deviation operations
+export function storeDeviation(animalId: string, deviation: DailyDeviation): void {
+    const history = dailyDeviations.get(animalId) || [];
+
+    // Avoid duplicate entries for the same date
+    const existingIndex = history.findIndex(d => d.date === deviation.date);
+    if (existingIndex >= 0) {
+        history[existingIndex] = deviation;
+    } else {
+        history.push(deviation);
+    }
+
+    // Keep only last 30 days
+    if (history.length > 30) {
+        history.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        history.length = 30;
+    }
+
+    dailyDeviations.set(animalId, history);
+}
+
+export function getDeviationHistory(animalId: string, days = 30): DailyDeviation[] {
+    const history = dailyDeviations.get(animalId) || [];
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+
+    return history
+        .filter(d => new Date(d.date) >= cutoffDate)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+}
+
+// Early warning operations
+export function getEarlyWarning(animalId: string): EarlyWarningAssessment | undefined {
+    return earlyWarnings.get(animalId);
+}
+
+export function setEarlyWarning(warning: EarlyWarningAssessment): void {
+    earlyWarnings.set(warning.animalId, warning);
+}
+
+export function getAllEarlyWarnings(): EarlyWarningAssessment[] {
+    return Array.from(earlyWarnings.values());
 }
 
 // Initialize seed data on module load

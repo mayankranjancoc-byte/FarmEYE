@@ -119,3 +119,89 @@ export interface HealthBaseline {
   speedStdDev: number;
   calculatedAt: string;
 }
+
+/**
+ * Baseline learning status
+ */
+export type BaselineStatus = 'LEARNING' | 'STABLE';
+
+/**
+ * Personalized baseline for individual animal behavior tracking
+ */
+export interface AnimalBaseline {
+  animalId: string;
+  avgSpeed: number;
+  avgVisitsPerDay: number;
+  avgActivityLevel: number;
+  speedStdDev: number;
+  activityStdDev: number;
+  baselineStartDate: string; // ISO-8601
+  baselineStatus: BaselineStatus;
+  dataPointsCollected: number;
+  requiredDataPoints: number; // Minimum data points needed for stable baseline
+}
+
+/**
+ * Personalized risk assessment using individual baseline
+ */
+export interface PersonalizedRiskAssessment extends RiskAssessment {
+  baselineUsed: boolean;
+  deviationScore: number; // % deviation from personal baseline
+  baselineStatus: BaselineStatus;
+  learningProgress?: number; // 0-1 range, only present during LEARNING
+  explanation?: HealthExplanation; // XHI: Full explanation of the assessment
+}
+
+/**
+ * Daily deviation snapshot for Early Health Drift Detection (EHDD)
+ */
+export interface DailyDeviation {
+  date: string; // ISO-8601 date string (YYYY-MM-DD)
+  activityDeltaPct: number; // % change from personal baseline
+  speedDeltaPct: number; // % change from personal baseline
+  visitDeltaPct: number; // % change from personal baseline
+  flagCount: number; // Number of signals exceeding 5-15% threshold
+}
+
+/**
+ * Drift detection states for early warning system
+ */
+export type DriftState = 'STABLE' | 'EARLY_DRIFT' | 'ACTION_REQUIRED';
+
+/**
+ * Early warning assessment from drift detection
+ */
+export interface EarlyWarningAssessment {
+  animalId: string;
+  driftState: DriftState;
+  consecutiveDaysWithDrift: number;
+  recentDeviations: DailyDeviation[]; // Last 7 days
+  triggeredSignals: string[]; // Which metrics are drifting (activity, speed, visits)
+  earlyWarningMessage?: string;
+}
+
+/**
+ * Confidence level for health assessments (XHI)
+ */
+export type ConfidenceLevel = 'LOW' | 'MEDIUM' | 'HIGH';
+
+/**
+ * Individual signal contributor to health score (XHI)
+ */
+export interface SignalContributor {
+  signal: string; // Human-readable signal name
+  impact: number; // Negative contribution to health (always ≥ 0)
+  detail: string; // Specific measurement that triggered it
+}
+
+/**
+ * Complete health explanation for transparency and auditability (XHI)
+ */
+export interface HealthExplanation {
+  healthScore: number; // 0-100, where 100 = perfect health
+  contributors: SignalContributor[];
+  confidenceLevel: ConfidenceLevel;
+  consistencyDays: number; // How many days pattern has persisted
+  baselineReference: string; // What baseline was used
+  recommendation: string; // Clear action recommendation
+}

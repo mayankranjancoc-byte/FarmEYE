@@ -5,9 +5,17 @@ import {
     setRiskAssessment,
     addHealthMetrics,
     createGeminiAlert,
+    getAnimalBaseline,
+    setAnimalBaseline,
+    getHealthMetrics,
+    storeDeviation,
+    setEarlyWarning,
+    getDeviationHistory,
 } from '@/lib/data-store';
-import { calculateHealthRisk, generateSimulatedMetrics } from '@/lib/health-engine';
+import { calculateHealthRisk, generateSimulatedMetrics, calculatePersonalizedHealthRisk } from '@/lib/health-engine';
 import { createAlertFromAssessment } from '@/lib/gemini';
+import { addBaselineDataPoint } from '@/lib/baseline-learning';
+import { calculateDailyDeviation, generateEarlyWarningAssessment } from '@/lib/drift-detection';
 
 /**
  * POST /api/health-score
@@ -64,15 +72,63 @@ export async function POST(request: NextRequest) {
         // Add metrics to history
         addHealthMetrics(currentMetrics);
 
-        // Calculate risk assessment
-        const assessment = calculateHealthRisk(animalId, currentMetrics, baseline);
+        // Get personalized baseline
+        let personalBaseline = getAnimalBaseline(animalId);
+        if (!personalBaseline) {
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: 'Personalized baseline not found for animal',
+                },
+                { status: 404 }
+            );
+        }
+
+        // Update baseline with new data point
+        const allMetrics = getHealthMetrics(animalId, 100);
+        personalBaseline = addBaselineDataPoint(personalBaseline, allMetrics);
+        setAnimalBaseline(personalBaseline);
+
+        // EHDD: Calculate and store daily deviation if baseline is STABLE
+        let earlyWarning = null;
+        let warningAssessment = null;
+        if (personalBaseline.baselineStatus === 'STABLE') {
+            // Calculate today's deviation
+            const todayDeviation = calculateDailyDeviation(currentMetrics, personalBaseline);
+            storeDeviation(animalId, todayDeviation);
+
+            // Get deviation history and generate early warning assessment
+            const deviationHistory = getDeviationHistory(animalId, 7);
+            warningAssessment = generateEarlyWarningAssessment(animalId, deviationHistory);
+            setEarlyWarning(warningAssessment);
+
+            earlyWarning = {
+                driftState: warningAssessment.driftState,
+                consecutiveDays: warningAssessment.consecutiveDaysWithDrift,
+                message: warningAssessment.earlyWarningMessage,
+            };
+        }
+
+        // Calculate risk assessment with XHI (pass consistency days and drift state)
+        const consistencyDays = warningAssessment?.consecutiveDaysWithDrift || 1;
+        const driftState = warningAssessment?.driftState || 'STABLE';
+        const assessment = calculatePersonalizedHealthRisk(
+            animalId,
+            currentMetrics,
+            personalBaseline,
+            consistencyDays,
+            driftState
+        );
 
         // Store assessment
         setRiskAssessment(assessment);
 
-        // Create Gemini alert if risk is MODERATE or HIGH
+        // Create Gemini alert ONLY if risk is MODERATE/HIGH AND baseline is STABLE
         let alert = null;
-        if (assessment.riskLevel === 'MODERATE' || assessment.riskLevel === 'HIGH') {
+        if (
+            personalBaseline.baselineStatus === 'STABLE' &&
+            (assessment.riskLevel === 'MODERATE' || assessment.riskLevel === 'HIGH')
+        ) {
             const alertData = createAlertFromAssessment(assessment);
             alert = createGeminiAlert(alertData);
         }
@@ -83,6 +139,12 @@ export async function POST(request: NextRequest) {
                 assessment,
                 metrics: currentMetrics,
                 alert: alert || null,
+                baseline: {
+                    status: personalBaseline.baselineStatus,
+                    progress: personalBaseline.dataPointsCollected / personalBaseline.requiredDataPoints,
+                    dataPoints: personalBaseline.dataPointsCollected,
+                },
+                earlyWarning: earlyWarning || null,
             },
         });
     } catch (error) {

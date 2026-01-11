@@ -5,7 +5,10 @@ import {
     getDetectionEvents,
     getHealthMetrics,
     getGeminiAlerts,
+    getAnimalBaseline,
+    getEarlyWarning,
 } from '@/lib/data-store';
+import { calculateLearningProgress } from '@/lib/baseline-learning';
 
 /**
  * GET /api/animals/[id]
@@ -33,6 +36,8 @@ export async function GET(
         const detections = getDetectionEvents(id, 20);
         const metrics = getHealthMetrics(id, 10);
         const alerts = getGeminiAlerts(id, 10);
+        const baseline = getAnimalBaseline(id);
+        const earlyWarning = getEarlyWarning(id);
 
         return NextResponse.json({
             success: true,
@@ -42,6 +47,20 @@ export async function GET(
                 detectionHistory: detections,
                 healthMetrics: metrics,
                 alerts,
+                baseline: baseline ? {
+                    status: baseline.baselineStatus,
+                    progress: calculateLearningProgress(baseline),
+                    dataPoints: baseline.dataPointsCollected,
+                    requiredDataPoints: baseline.requiredDataPoints,
+                    startDate: baseline.baselineStartDate,
+                } : null,
+                earlyWarning: earlyWarning ? {
+                    driftState: earlyWarning.driftState,
+                    consecutiveDays: earlyWarning.consecutiveDaysWithDrift,
+                    recentDeviations: earlyWarning.recentDeviations,
+                    triggeredSignals: earlyWarning.triggeredSignals,
+                    message: earlyWarning.earlyWarningMessage,
+                } : null,
             },
         });
     } catch (error) {

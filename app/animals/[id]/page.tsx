@@ -6,13 +6,31 @@ import Link from 'next/link';
 import RiskBadge from '@/components/RiskBadge';
 import ConfidenceMeter from '@/components/ConfidenceMeter';
 import AlertCard from '@/components/AlertCard';
-import { AnimalProfile, RiskAssessment, DetectionEvent, GeminiAlert } from '@/types';
+import BaselineStatusBadge from '@/components/BaselineStatusBadge';
+import DriftStateBadge from '@/components/DriftStateBadge';
+import MicroDeviationTimeline from '@/components/MicroDeviationTimeline';
+import HealthExplanationPanel from '@/components/HealthExplanationPanel';
+import { AnimalProfile, PersonalizedRiskAssessment, RiskAssessment, DetectionEvent, GeminiAlert, BaselineStatus, DriftState, DailyDeviation } from '@/types';
 
 interface AnimalDetailData {
     animal: AnimalProfile;
-    riskAssessment: RiskAssessment | null;
+    riskAssessment: PersonalizedRiskAssessment | RiskAssessment | null;
     detectionHistory: DetectionEvent[];
     alerts: GeminiAlert[];
+    baseline?: {
+        status: BaselineStatus;
+        progress: number;
+        dataPoints: number;
+        requiredDataPoints: number;
+        startDate: string;
+    } | null;
+    earlyWarning?: {
+        driftState: DriftState;
+        consecutiveDays: number;
+        recentDeviations: DailyDeviation[];
+        triggeredSignals: string[];
+        message?: string;
+    } | null;
 }
 
 export default function AnimalDetailPage() {
@@ -63,7 +81,7 @@ export default function AnimalDetailPage() {
         );
     }
 
-    const { animal, riskAssessment, detectionHistory, alerts } = data;
+    const { animal, riskAssessment, detectionHistory, alerts, baseline, earlyWarning } = data;
 
     return (
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8">
@@ -98,6 +116,40 @@ export default function AnimalDetailPage() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Main Content */}
                 <div className="lg:col-span-2 space-y-6">
+                    {/* Baseline Status Section */}
+                    {baseline && (
+                        <BaselineStatusBadge
+                            status={baseline.status}
+                            progress={baseline.progress}
+                            dataPoints={baseline.dataPoints}
+                            requiredDataPoints={baseline.requiredDataPoints}
+                        />
+                    )}
+
+                    {/* Early Health Drift Detection Section */}
+                    {earlyWarning && earlyWarning.driftState !== 'STABLE' && (
+                        <div className="bg-white border border-gray-200 rounded-xl p-6">
+                            <div className="flex items-center justify-between mb-4">
+                                <h3 className="text-lg font-semibold text-gray-900">Early Health Drift Detection</h3>
+                                <DriftStateBadge
+                                    driftState={earlyWarning.driftState}
+                                    consecutiveDays={earlyWarning.consecutiveDays}
+                                />
+                            </div>
+
+                            <MicroDeviationTimeline
+                                deviations={earlyWarning.recentDeviations}
+                                triggeredSignals={earlyWarning.triggeredSignals}
+                            />
+
+                            {earlyWarning.message && (
+                                <div className="mt-4 bg-yellow-50 border-l-4 border-yellow-400 p-4">
+                                    <p className="text-sm text-yellow-800">{earlyWarning.message}</p>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Risk Assessment */}
                     {riskAssessment && (
                         <div className="bg-white rounded-xl border border-gray-200 p-6">
@@ -134,6 +186,14 @@ export default function AnimalDetailPage() {
                                             ))}
                                         </ul>
                                     </div>
+                                )}
+
+                                {/* XHI: Health Explanation Panel */}
+                                {riskAssessment.explanation && (
+                                    <HealthExplanationPanel
+                                        explanation={riskAssessment.explanation}
+                                        animalId={animal.id}
+                                    />
                                 )}
                             </div>
                         </div>

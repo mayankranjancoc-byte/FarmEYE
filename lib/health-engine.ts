@@ -4,7 +4,12 @@ import {
     RiskSignals,
     HealthMetrics,
     HealthBaseline,
+    AnimalBaseline,
+    PersonalizedRiskAssessment,
+    DriftState,
 } from '@/types';
+import { calculateDeviation, calculateLearningProgress, isBaselineReady } from './baseline-learning';
+import { generateHealthExplanation } from './explainable-health';
 
 /**
  * Deterministic health risk engine for livestock monitoring
@@ -178,6 +183,162 @@ export function calculateHealthRisk(
         signals,
         contributingFactors,
     };
+
+    return assessment;
+}
+
+/**
+ * Calculate personalized health risk using individual animal baseline
+ * This replaces herd-level comparison with personal deviation tracking
+ */
+export function calculatePersonalizedHealthRisk(
+    animalId: string,
+    currentMetrics: HealthMetrics,
+    personalBaseline: AnimalBaseline,
+    consistencyDays: number = 1,
+    driftState: DriftState = 'STABLE'
+): PersonalizedRiskAssessment {
+    // If baseline is still learning, return LOW risk with learning status
+    if (!isBaselineReady(personalBaseline)) {
+        return {
+            animalId,
+            timestamp: new Date().toISOString(),
+            riskLevel: 'LOW',
+            riskScore: 0,
+            signals: {
+                activityDrop: false,
+                speedAnomaly: false,
+                visitReduction: false,
+            },
+            contributingFactors: ['Baseline learning in progress - health monitoring will activate once stable'],
+            baselineUsed: false,
+            deviationScore: 0,
+            baselineStatus: 'LEARNING',
+            learningProgress: calculateLearningProgress(personalBaseline),
+        };
+    }
+
+    // Calculate deviations from personal baseline
+    const activityDeviation = calculateDeviation(
+        currentMetrics.activityLevel,
+        personalBaseline.avgActivityLevel
+    );
+
+    const visitDeviation = calculateDeviation(
+        currentMetrics.visitFrequency24h,
+        personalBaseline.avgVisitsPerDay
+    );
+
+    const speedDeviation = calculateDeviation(
+        currentMetrics.averageSpeed,
+        personalBaseline.avgSpeed
+    );
+
+    // Calculate activity signal based on personal baseline (0-40 points)
+    let activityScore = 0;
+    let activityDescription = 'Activity normal for this animal';
+    let activityActive = false;
+
+    if (activityDeviation <= -30) {
+        activityScore = 40;
+        activityDescription = `Activity ${Math.abs(activityDeviation).toFixed(1)}% below personal baseline`;
+        activityActive = true;
+    } else if (activityDeviation <= -15) {
+        activityScore = 25;
+        activityDescription = `Activity ${Math.abs(activityDeviation).toFixed(1)}% below personal baseline`;
+        activityActive = true;
+    } else if (activityDeviation <= -5) {
+        activityScore = 10;
+        activityDescription = `Slight activity reduction from personal baseline`;
+        activityActive = false;
+    }
+
+    // Calculate visit signal based on personal baseline (0-35 points)
+    let visitScore = 0;
+    let visitDescription = 'Corridor visits normal for this animal';
+    let visitActive = false;
+
+    if (visitDeviation <= -40) {
+        visitScore = 35;
+        visitDescription = `Visits ${Math.abs(visitDeviation).toFixed(1)}% below personal baseline`;
+        visitActive = true;
+    } else if (visitDeviation <= -20) {
+        visitScore = 20;
+        visitDescription = `Visits ${Math.abs(visitDeviation).toFixed(1)}% below personal baseline`;
+        visitActive = true;
+    } else if (visitDeviation <= -10) {
+        visitScore = 10;
+        visitDescription = `Minor decrease in visits from personal baseline`;
+        visitActive = false;
+    }
+
+    // Calculate speed signal using z-score from personal baseline (0-25 points)
+    const speedZScore = personalBaseline.speedStdDev > 0
+        ? Math.abs(speedDeviation) / (personalBaseline.speedStdDev * 100)
+        : 0;
+
+    let speedScore = 0;
+    let speedDescription = 'Speed normal for this animal';
+    let speedActive = false;
+
+    if (speedZScore > 2.5) {
+        speedScore = 25;
+        speedDescription = `Significant speed anomaly (${speedZScore.toFixed(1)}σ from personal baseline)`;
+        speedActive = true;
+    } else if (speedZScore > 1.5) {
+        speedScore = 15;
+        speedDescription = `Moderate speed deviation from personal baseline`;
+        speedActive = true;
+    } else if (speedZScore > 1.0) {
+        speedScore = 5;
+        speedDescription = `Minor speed variation from personal baseline`;
+        speedActive = false;
+    }
+
+    // Calculate total score and risk level
+    const totalScore = activityScore + visitScore + speedScore;
+    const riskLevel = calculateRiskLevel(totalScore);
+
+    // Build signals
+    const signals: RiskSignals = {
+        activityDrop: activityActive,
+        speedAnomaly: speedActive,
+        visitReduction: visitActive,
+    };
+
+    // Collect contributing factors
+    const contributingFactors: string[] = [];
+    if (activityActive) contributingFactors.push(activityDescription);
+    if (visitActive) contributingFactors.push(visitDescription);
+    if (speedActive) contributingFactors.push(speedDescription);
+
+    if (contributingFactors.length === 0) {
+        contributingFactors.push('All health indicators within personal normal range');
+    }
+
+    // Calculate average absolute deviation for the deviation score
+    const avgDeviation = (Math.abs(activityDeviation) + Math.abs(visitDeviation) + Math.abs(speedDeviation)) / 3;
+
+    const assessment: PersonalizedRiskAssessment = {
+        animalId,
+        timestamp: new Date().toISOString(),
+        riskLevel,
+        riskScore: totalScore,
+        signals,
+        contributingFactors,
+        baselineUsed: true,
+        deviationScore: avgDeviation,
+        baselineStatus: 'STABLE',
+    };
+
+    // XHI: Generate explanation for transparency
+    assessment.explanation = generateHealthExplanation(
+        assessment,
+        currentMetrics,
+        personalBaseline,
+        consistencyDays,
+        driftState
+    );
 
     return assessment;
 }
