@@ -14,6 +14,7 @@ import {
     RiskLevel,
 } from '@/types';
 import { initializeBaseline } from './baseline-learning';
+import { generateHealthExplanation } from './explainable-health';
 
 /**
  * In-memory data store for FarmEYE
@@ -310,6 +311,25 @@ export function initializeSeedData() {
         deviationScore: 12.5,
         baselineStatus: 'STABLE',
     };
+
+    // Generate XHI explanation for COW-102
+    const cow2CurrentMetrics: HealthMetrics = {
+        animalId: cow2Id,
+        timestamp: now.toISOString(),
+        activityLevel: Math.round(cow2Baseline.avgActivityLevel * (1 + cow2Deviations[6].activityDeltaPct / 100)),
+        visitFrequency24h: Math.round(cow2Baseline.avgVisitsPerDay * (1 + cow2Deviations[6].visitDeltaPct / 100)),
+        visitFrequency48h: Math.round(cow2Baseline.avgVisitsPerDay * 2 * (1 + cow2Deviations[6].visitDeltaPct / 100)),
+        averageSpeed: parseFloat((cow2Baseline.avgSpeed * (1 + cow2Deviations[6].speedDeltaPct / 100)).toFixed(2)),
+        speedDeviation: cow2Baseline.speedStdDev,
+    };
+    cow2Assessment.explanation = generateHealthExplanation(
+        cow2Assessment,
+        cow2CurrentMetrics,
+        cow2Baseline,
+        5, // 5 days of consistent drift
+        'EARLY_DRIFT'
+    );
+
     riskAssessments.set(cow2Id, cow2Assessment);
 
     // Create Gemini alert for COW-102
@@ -355,6 +375,25 @@ export function initializeSeedData() {
         deviationScore: 33.4,
         baselineStatus: 'STABLE',
     };
+
+    // Generate XHI explanation for COW-103
+    const cow3CurrentMetrics: HealthMetrics = {
+        animalId: cow3Id,
+        timestamp: now.toISOString(),
+        activityLevel: Math.round(cow3Baseline.avgActivityLevel * (1 + cow3Deviations[6].activityDeltaPct / 100)),
+        visitFrequency24h: Math.round(cow3Baseline.avgVisitsPerDay * (1 + cow3Deviations[6].visitDeltaPct / 100)),
+        visitFrequency48h: Math.round(cow3Baseline.avgVisitsPerDay * 2 * (1 + cow3Deviations[6].visitDeltaPct / 100)),
+        averageSpeed: parseFloat((cow3Baseline.avgSpeed * (1 + cow3Deviations[6].speedDeltaPct / 100)).toFixed(2)),
+        speedDeviation: cow3Baseline.speedStdDev,
+    };
+    cow3Assessment.explanation = generateHealthExplanation(
+        cow3Assessment,
+        cow3CurrentMetrics,
+        cow3Baseline,
+        7, // 7 days of sustained severe deviations
+        'ACTION_REQUIRED'
+    );
+
     riskAssessments.set(cow3Id, cow3Assessment);
 
     // Create Gemini alert for COW-103 (HIGH severity)
