@@ -9,6 +9,9 @@ import {
     AnimalBaseline,
     DailyDeviation,
     EarlyWarningAssessment,
+    DetectionSource,
+    PersonalizedRiskAssessment,
+    RiskLevel,
 } from '@/types';
 import { initializeBaseline } from './baseline-learning';
 
@@ -41,14 +44,14 @@ let animalIdCounter = {
 function generateAnimalId(species: AnimalSpecies): string {
     const prefix = species.toUpperCase();
     const id = animalIdCounter[species]++;
-    return `${prefix}-${id.toString().padStart(3, '0')}`;
+    return `${prefix} -${id.toString().padStart(3, '0')} `;
 }
 
 /**
  * Generate UUID-like ID for events and alerts
  */
 function generateId(): string {
-    return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    return `${Date.now()} -${Math.random().toString(36).substr(2, 9)} `;
 }
 
 /**
@@ -226,10 +229,187 @@ export function initializeSeedData() {
     };
     animalBaselines.set(buf1Id, buf1Baseline);
 
-    console.log(`[DataStore] Initialized with ${animals.size} sample animals (${Array.from(animals.values()).filter(a => {
+    // ========================================
+    // POPULATE HEALTH METRICS AND ASSESSMENTS
+    // ========================================
+
+    // Helper function to add realistic health metrics over time
+    function addHealthMetricsHistory(animalId: string, baseline: AnimalBaseline, deviations: DailyDeviation[], daysBack: number = 7) {
+        for (let i = daysBack; i >= 0; i--) {
+            const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+            const deviation = deviations.find(d => d.date === date.toISOString().split('T')[0]) || deviations[0];
+
+            const metrics: HealthMetrics = {
+                animalId,
+                timestamp: date.toISOString(),
+                activityLevel: Math.round(baseline.avgActivityLevel * (1 + deviation.activityDeltaPct / 100)),
+                visitFrequency24h: Math.round(baseline.avgVisitsPerDay * (1 + deviation.visitDeltaPct / 100)),
+                visitFrequency48h: Math.round(baseline.avgVisitsPerDay * 2 * (1 + deviation.visitDeltaPct / 100)),
+                averageSpeed: parseFloat((baseline.avgSpeed * (1 + deviation.speedDeltaPct / 100)).toFixed(2)),
+                speedDeviation: baseline.speedStdDev,
+            };
+
+            if (!healthMetrics.has(animalId)) {
+                healthMetrics.set(animalId, []);
+            }
+            healthMetrics.get(animalId)!.push(metrics);
+
+            // Add detection event
+            const event: DetectionEvent = {
+                id: generateId(),
+                animalId,
+                timestamp: date.toISOString(),
+                confidence: 0.92 + Math.random() * 0.07, // 0.92-0.99
+                source: 'Corridor' as DetectionSource,
+            };
+            detectionEvents.push(event);
+        }
+    }
+
+    // COW-101: Healthy - add 7 days of stable metrics
+    addHealthMetricsHistory(cow1Id, cow1Baseline, cow1Deviations, 7);
+
+    // Create latest risk assessment for COW-101 (LOW risk)
+    const cow1Assessment: PersonalizedRiskAssessment = {
+        animalId: cow1Id,
+        timestamp: now.toISOString(),
+        riskLevel: 'LOW',
+        riskScore: 12,
+        signals: {
+            activityDrop: false,
+            speedAnomaly: false,
+            visitReduction: false,
+        },
+        contributingFactors: ['All behavioral metrics within normal range'],
+        baselineUsed: true,
+        deviationScore: 2.1,
+        baselineStatus: 'STABLE',
+    };
+    riskAssessments.set(cow1Id, cow1Assessment);
+
+    // COW-102: Early Lameness - add 7 days showing progressive decline
+    addHealthMetricsHistory(cow2Id, cow2Baseline, cow2Deviations, 7);
+
+    // Create MODERATE risk assessment for COW-102
+    const cow2Assessment: PersonalizedRiskAssessment = {
+        animalId: cow2Id,
+        timestamp: now.toISOString(),
+        riskLevel: 'MODERATE',
+        riskScore: 38,
+        signals: {
+            activityDrop: true,
+            speedAnomaly: true,
+            visitReduction: true,
+        },
+        contributingFactors: [
+            'Activity 11.7% below personal baseline',
+            'Visit frequency 15.3% below personal baseline',
+            'Speed 10.4% below personal baseline - consistent micro-drift for 5 consecutive days'
+        ],
+        baselineUsed: true,
+        deviationScore: 12.5,
+        baselineStatus: 'STABLE',
+    };
+    riskAssessments.set(cow2Id, cow2Assessment);
+
+    // Create Gemini alert for COW-102
+    const cow2Alert: GeminiAlert = {
+        id: generateId(),
+        animalId: cow2Id,
+        timestamp: new Date(now.getTime() - 1 * 60 * 60 * 1000).toISOString(), // 1 hour ago
+        severity: 'MODERATE' as RiskLevel,
+        explanation: 'COW-102 has shown consistent behavioral deviations over the past 5 days. Activity decreased by 11.7%, speed by 10.4%, and visit frequency by 15.3% compared to personal baseline. This pattern is consistent with early-stage lameness or hoof discomfort. Based on the behavioral pattern analysis, this animal is showing early signs of mobility issues. The gradual decline in activity and speed over multiple consecutive days, combined with reduced feeding visits, suggests developing lameness. Early intervention with hoof inspection and potential trimming can prevent more serious complications. This is a preventive alert - the condition has not yet reached critical stage.',
+        recommendations: [
+            'Perform visual hoof inspection',
+            'Check for signs of lameness or limping',
+            'Monitor walking pattern in corridor',
+            'Consider hoof trimming if overgrowth detected',
+            'Schedule preventive veterinary check-up within 24-48 hours'
+        ],
+        signals: cow2Assessment.signals,
+        riskScore: cow2Assessment.riskScore,
+    };
+    geminiAlerts.push(cow2Alert);
+
+    // COW-103: Mastitis pattern - add 7 days showing severe decline
+    addHealthMetricsHistory(cow3Id, cow3Baseline, cow3Deviations, 7);
+
+    // Create HIGH risk assessment for COW-103
+    const cow3Assessment: PersonalizedRiskAssessment = {
+        animalId: cow3Id,
+        timestamp: now.toISOString(),
+        riskLevel: 'HIGH',
+        riskScore: 82,
+        signals: {
+            activityDrop: true,
+            speedAnomaly: true,
+            visitReduction: true,
+        },
+        contributingFactors: [
+            'Activity 36.8% below personal baseline - SEVERE',
+            'Visit frequency 48.2% below personal baseline - CRITICAL',
+            'Speed 15.3% below personal baseline',
+            'Sustained severe deviations for 7 consecutive days'
+        ],
+        baselineUsed: true,
+        deviationScore: 33.4,
+        baselineStatus: 'STABLE',
+    };
+    riskAssessments.set(cow3Id, cow3Assessment);
+
+    // Create Gemini alert for COW-103 (HIGH severity)
+    const cow3Alert: GeminiAlert = {
+        id: generateId(),
+        animalId: cow3Id,
+        timestamp: new Date(now.getTime() - 30 * 60 * 1000).toISOString(), // 30 min ago
+        severity: 'HIGH' as RiskLevel,
+        explanation: 'URGENT ACTION REQUIRED: COW-103 (Jersey, 5 years) is exhibiting severe behavioral changes indicating a serious health issue. Activity has dropped 36.8% below baseline, with visit frequency down 48.2% over the past week. This pattern is consistent with systemic illness such as mastitis, metritis, or severe metabolic disorder. This animal is showing a severe and sustained decline in all key behavioral indicators over one week. The dramatic reduction in feeding visits (48%) combined with significantly decreased activity suggests the animal is experiencing severe discomfort or systemic illness. The pattern strongly indicates mastitis or a related infectious/inflammatory condition. Immediate veterinary intervention is essential to prevent further deterioration and potential complications.',
+        recommendations: [
+            '⚠️ IMMEDIATE veterinary examination required',
+            'Check body temperature (normal: 38.5°C)',
+            'Perform mastitis screening (CMT test)',
+            'Inspect udder for heat, swelling, or abnormal milk',
+            'Check for signs of fever, lethargy, or reduced appetite',
+            'Consider blood work to rule out metabolic issues',
+            'Isolate from herd if contagious disease suspected'
+        ],
+        signals: cow3Assessment.signals,
+        riskScore: cow3Assessment.riskScore,
+    };
+    geminiAlerts.push(cow3Alert);
+
+    // BUFFALO-201: Still learning - add 3 days of initial data
+    const buf1Deviations: DailyDeviation[] = [
+        { date: new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], activityDeltaPct: 0, speedDeltaPct: 0, visitDeltaPct: 0, flagCount: 0 },
+        { date: new Date(now.getTime() - 1 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], activityDeltaPct: 0, speedDeltaPct: 0, visitDeltaPct: 0, flagCount: 0 },
+        { date: now.toISOString().split('T')[0], activityDeltaPct: 0, speedDeltaPct: 0, visitDeltaPct: 0, flagCount: 0 },
+    ];
+    addHealthMetricsHistory(buf1Id, buf1Baseline, buf1Deviations, 3);
+
+    // LOW risk for buffalo (learning phase)
+    const buf1Assessment: PersonalizedRiskAssessment = {
+        animalId: buf1Id,
+        timestamp: now.toISOString(),
+        riskLevel: 'LOW',
+        riskScore: 0,
+        signals: {
+            activityDrop: false,
+            speedAnomaly: false,
+            visitReduction: false,
+        },
+        contributingFactors: ['Baseline learning in progress - health monitoring will activate once stable'],
+        baselineUsed: false,
+        deviationScore: 0,
+        baselineStatus: 'LEARNING',
+        learningProgress: 0.25, // 25% complete
+    };
+    riskAssessments.set(buf1Id, buf1Assessment);
+
+    console.log(`[DataStore] Initialized with ${animals.size} sample animals(${Array.from(animals.values()).filter(a => {
         const baseline = animalBaselines.get(a.id);
         return baseline?.baselineStatus === 'STABLE';
-    }).length} with STABLE baselines)`);
+    }).length
+        } with STABLE baselines)`);
 }
 
 // Animal CRUD operations
